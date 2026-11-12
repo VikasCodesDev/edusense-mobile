@@ -1,0 +1,272 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import api from '@/lib/api';
+import {
+  Cpu,
+  RefreshCw,
+  Award,
+  CheckCircle2,
+  BarChart2,
+  HelpCircle,
+  TrendingUp,
+  Layers
+} from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer
+} from 'recharts';
+
+const FEATURE_LABELS: Record<string, string> = {
+  attendance_pct: 'Attendance Rate',
+  assignment_completion_rate: 'Assignment Completion Rate',
+  assignment_avg_score: 'Assignment Average Score',
+  internal_test_avg: 'Internal Test Average',
+  previous_exam_score: 'Previous Exam Score',
+  performance_trend: 'Performance Trend',
+  study_engagement_score: 'Study Engagement Score',
+  subject_failure_count: 'Subject Failure Count',
+  subject_min_score: 'Minimum Subject Score',
+  subject_avg_score: 'Average Subject Score',
+  subject_std_dev: 'Subject Score Variation'
+};
+
+const DIRECT_INDICATORS = new Set([
+  'attendance_pct',
+  'assignment_completion_rate',
+  'assignment_avg_score',
+  'internal_test_avg',
+  'previous_exam_score',
+  'performance_trend',
+  'study_engagement_score',
+  'subject_failure_count'
+]);
+
+function formatFeatureLabel(feature: string) {
+  return FEATURE_LABELS[feature] || feature.replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+export default function ModelManagementPage() {
+  const [modelData, setModelData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [retraining, setRetraining] = useState(false);
+  const [retrainSuccess, setRetrainSuccess] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchModelInfo = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get('/admin/model');
+      if (res.data.success) {
+        setModelData(res.data.metadata || null);
+        setError(null);
+      } else {
+        setModelData(null);
+        setError(res.data.error || 'The backend returned no ML model metadata.');
+      }
+    } catch (err: any) {
+      setModelData(null);
+      setError(err.response?.data?.error || err.message || 'Unable to fetch ML model status through the backend.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchModelInfo();
+  }, []);
+
+  const handleRetrain = async () => {
+    try {
+      setRetraining(true);
+      setError(null);
+      setRetrainSuccess(null);
+
+      const res = await api.post('/admin/model/retrain', {});
+      if (res.data.success) {
+        setRetrainSuccess('Model retrained and benchmarked successfully across candidate algorithms.');
+        await fetchModelInfo();
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || 'Retraining failed.');
+    } finally {
+      setRetraining(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="max-w-7xl mx-auto px-4 py-12 animate-pulse space-y-6"><div className="h-60 bg-slate-800/50 rounded-2xl" /></div>;
+  }
+
+  const benchmarks = modelData?.all_model_benchmarks || {};
+
+  const featureImportances = Array.isArray(modelData?.feature_importances)
+    ? modelData.feature_importances
+    : [];
+  const featureImportanceData = featureImportances
+    .filter((item: any) => !item.feature.startsWith('score_'))
+    .map((item: any) => ({
+    ...item,
+    featureLabel: formatFeatureLabel(item.feature),
+    category: DIRECT_INDICATORS.has(item.feature) ? 'Direct Academic Indicator' : 'Derived / Aggregate Indicator'
+  }));
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
+      
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <span className="text-xs font-mono uppercase tracking-widest text-indigo-400">Machine Learning Governance</span>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mt-1">ML Model Benchmark & Retraining Hub</h1>
+          <p className="text-xs sm:text-sm text-slate-400">
+            Multi-model evaluation matrix, feature importance diagnostics, and Stratified K-Fold validation.
+          </p>
+        </div>
+
+        <button
+          onClick={handleRetrain}
+          disabled={retraining}
+          className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium inline-flex items-center gap-2 shadow-sm transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${retraining ? 'animate-spin' : ''}`} />
+          <span>{retraining ? 'Retraining Models...' : 'Retrain on Current Dataset'}</span>
+        </button>
+      </div>
+
+      {retrainSuccess && (
+        <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4" />
+          <span>{retrainSuccess}</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
+          {error}
+        </div>
+      )}
+
+      {/* Active Model Summary Card */}
+      <div className="subtle-card rounded-2xl p-6 sm:p-8 border border-slate-800 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+          <div>
+            <span className="text-xs font-mono uppercase tracking-wider text-slate-400">Champion Production Model</span>
+            <h2 className="text-xl font-bold text-white mt-0.5">{modelData?.algorithm || 'Model metadata unavailable'}</h2>
+          </div>
+          <div className="flex items-center gap-4 text-xs font-mono text-slate-400 bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+            <div>
+              <span className="text-[10px] text-slate-500 block">Version</span>
+              <span className="text-white font-bold">{modelData?.version ?? 'Unavailable'}</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 block">Training Records</span>
+              <span className="text-white font-bold">{modelData?.total_samples ?? '—'} samples</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 block">Validation</span>
+              <span className="text-indigo-400 font-bold">5-Fold Stratified CV</span>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-400 leading-relaxed">
+          {modelData ? <>Model metadata is supplied by the connected backend and ML service. The source ML pipeline selects its model using the current validation process; review the returned benchmark results before making operational decisions.</> : 'No live model metadata is available. Reconnect the backend and ML service before reviewing model metrics or retraining.'}
+        </p>
+      </div>
+
+      {/* Model Benchmark Comparison Table */}
+      <div className="subtle-card rounded-2xl p-6 border border-slate-800 space-y-4">
+        <div>
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <Award className="w-4 h-4 text-indigo-400" />
+            <span>Multi-Model Evaluation Matrix</span>
+          </h3>
+          <p className="text-xs text-slate-400">Benchmarked on 20% test partition after 5-fold cross validation</p>
+        </div>
+
+        <div role="region" aria-label="Scrollable model benchmark table" tabIndex={0} className="overflow-x-auto overscroll-x-contain focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+          <table className="w-full text-left text-xs text-slate-300">
+            <thead className="text-[11px] uppercase tracking-wider text-slate-400 bg-slate-900/60 border-b border-slate-800">
+              <tr>
+                <th className="py-3 px-4">Algorithm</th>
+                <th className="py-3 px-4">Accuracy</th>
+                <th className="py-3 px-4">Precision (Weighted)</th>
+                <th className="py-3 px-4">High-Risk Recall</th>
+                <th className="py-3 px-4">Macro F1-Score</th>
+                <th className="py-3 px-4">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800 font-mono">
+              {Object.keys(benchmarks).length === 0 ? (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">Live benchmark metadata is unavailable from the backend.</td></tr>
+              ) : Object.entries(benchmarks).map(([name, m]: any, idx) => {
+                const isChampion = name === modelData?.algorithm;
+                return (
+                  <tr key={idx} className={isChampion ? 'bg-indigo-600/10 font-bold text-white' : 'hover:bg-slate-800/40'}>
+                    <td className="py-3.5 px-4 font-sans flex items-center gap-2">
+                      <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>{name}</span>
+                    </td>
+                    <td className="py-3.5 px-4 font-semibold text-emerald-400">{(m.accuracy * 100).toFixed(2)}%</td>
+                    <td className="py-3.5 px-4">{(m.precision * 100).toFixed(2)}%</td>
+                    <td className="py-3.5 px-4 text-rose-400 font-bold">{(m.high_risk_recall * 100).toFixed(2)}%</td>
+                    <td className="py-3.5 px-4 text-indigo-300">{(m.f1_score * 100).toFixed(2)}%</td>
+                    <td className="py-3.5 px-4">
+                      {isChampion ? (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-sans">
+                          ★ Active Champion
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 text-[10px] font-sans">Evaluated</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Global Feature Importances Chart */}
+      <div className="subtle-card rounded-2xl p-6 border border-slate-800 space-y-4">
+        <div>
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <BarChart2 className="w-4 h-4 text-indigo-400" />
+            <span>Global Feature Importance (MDI)</span>
+          </h3>
+          <p className="text-xs text-slate-400">Relative contribution of academic indicators in predicting risk</p>
+        </div>
+
+        {featureImportanceData.length === 0 ? (
+          <div className="flex h-40 items-center justify-center rounded-xl border border-slate-800 text-sm text-slate-400">
+            Current model feature importance is unavailable. Retrain or reconnect the ML service to load real model metadata.
+          </div>
+        ) : (
+        <div className="h-[500px] w-full pt-4">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={featureImportanceData}
+              layout="vertical"
+              margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+              <XAxis type="number" stroke="#64748b" fontSize={11} domain={[0, 'auto']} unit="%" />
+              <YAxis dataKey="featureLabel" type="category" stroke="#94a3b8" fontSize={11} width={170} />
+              <Tooltip cursor={{ fill: '#1e293b', opacity: 0.35 }} contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }} />
+              <Bar dataKey="percentage" fill="#6366f1" name="Importance %" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        )}
+      </div>
+
+    </div>
+  );
+}

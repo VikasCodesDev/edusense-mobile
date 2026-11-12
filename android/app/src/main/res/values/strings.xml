@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">EduSense</string>
+    <string name="title_activity_main">EduSense</string>
+    <string name="package_name">com.mod06.edusense.mobile</string>
+    <string name="custom_url_scheme">com.mod06.edusense.mobile</string>
+</resources>
